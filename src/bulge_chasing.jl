@@ -279,7 +279,7 @@ function qr_algorithm!(H::SymTridiagonal{T}, Q, max_layers::Int = 128, tol = eps
         !did_a_thing && break
 
         # Apply the given's rotations in bulk
-        bulk_wave_order_2x2_rmul!(Q, givens)
+        bulk_wave_order_2x2_rmul_parallel!(Q, givens)
 
         to = last_block_ends_at
     end

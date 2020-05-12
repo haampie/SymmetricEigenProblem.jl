@@ -28,6 +28,9 @@ julia> LinearAlgebra.peakflops() / 1e9
 
 So indeed roughly `74.95%` of dgemm.
 
+## Threading
+
+For threading use `JULIA_NUM_THREADS=16 julia`. It will parellellize the application of Given's rotations and gives significant speedups.
 
 ## Important note
 
