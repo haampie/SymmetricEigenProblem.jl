@@ -1,6 +1,11 @@
 using SymmetricEigenProblem
 using BenchmarkTools
 
+function lapack()
+    A = 
+    LAPACK.syev!
+end
+
 function bench(m = 2000, n = 2000, k = 64)
 
     givens = fill((rand(), rand()), n - 1, k)
