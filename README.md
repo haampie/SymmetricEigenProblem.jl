@@ -3,7 +3,7 @@
 A more or less working implementation of the QR-algorithm for real, symmetric, tridiagonal matrices.
 
 ## Features
-- Fast computation of eigenvectors through bulk Given's rotation without using GEMM. Assumes avx2 currently, but can be made generic. [1]
+- Fast computation of eigenvectors through applying Given's rotations in bulk without using GEMM. Assumes avx2 currently, but can be made generic. [1]
 - Otherwise standard bulge chasing with Wilkinson shifts, no multiple tightly packed bulges or anything.
 
 The Given's rotations can theoretically get 75% of dgemm performance (4 muls, 2 adds). To benchmark this non-blas-type routine, try:
