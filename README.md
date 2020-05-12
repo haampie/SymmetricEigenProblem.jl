@@ -29,4 +29,31 @@ julia> LinearAlgebra.peakflops() / 1e9
 So indeed roughly `74.95%` of dgemm.
 
 
+## Important note
+
+Because this is a prototype, it only supports Float64 SymTridiagonal matrices which have an **order divisable by 4**. It's trivial to support many more types of matrices, but that's for later. If your matrix does not have this order, julia might segfault :).
+
+## Stability issues
+
+Sometimes the algorithm might use exact eigenvalues as shifts, which might introduce extremely big errors. I have to figure out how to stabilize it a bit more, but it should be fine as longs as the eigenvalues you have are separated a bit.
+
+## Example
+
+```julia
+julia> using SymmetricEigenProblem
+
+julia> n = 2000;
+
+julia> A = SymTridiagonal(collect(1.0 : n), rand(n - 1));
+
+julia> Q = Matrix(1.0I, n, n);
+
+julia> D = copy(A)
+
+julia> qr_algorithm!(D, Q);
+
+julia> norm(A * Q - Q * Diagonal(D))
+2.8632552826583774e-10
+```
+
 [1] Van Zee, Field G., Robert A. Van De Geijn, and Gregorio Quintana-Orti. "Restructuring the QR-Algorithm for High-Performance Applications of Givens Rotations." (2011).
