@@ -60,7 +60,8 @@ julia> Q = Matrix(1.0I, n, n);
 
 julia> D = copy(A);
 
-julia> SymmetricEigenProblem.qr_algorithm!(D, Q);
+julia> @time SymmetricEigenProblem.qr_algorithm!(D, Q);
+  0.258179 seconds (1.15 k allocations: 4.041 MiB)
 
 julia> norm(A * Q - Q * Diagonal(D))
 2.8632552826583774e-10
