@@ -8,7 +8,7 @@ import Base: Matrix
     abs(H.ev[i]) ≤ tol*(abs(H.dv[i]) + abs(H.dv[i+1]))
 
 
-function single_shift!(H::SymTridiagonal{Tv}, from::Int, to::Int, μ::Number, Q = NotWanted()) where {Tv<:Number}
+function single_shift!(H::SymTridiagonal{Tv}, from::Int, to::Int, μ::Number, givens, layer_thickness) where {Tv<:Number}
     m, n = size(H)
 
     @inbounds @fastmath begin
@@ -58,7 +58,9 @@ function single_shift!(H::SymTridiagonal{Tv}, from::Int, to::Int, μ::Number, Q 
             H.ev[from + 1] = H₂₃′
         end
 
-        rmul!(Q, G₁)
+        # Store the rotation
+        layer = layer_thickness[from] += 1
+        givens[from, layer] = (G₁.c, G₁.s)
 
         # Bulge chasing. First step of the for-loop below looks like:
         #  from           to
@@ -132,103 +134,158 @@ function single_shift!(H::SymTridiagonal{Tv}, from::Int, to::Int, μ::Number, Q 
                 H.ev[i + 1] = B₂₃′
             end
 
-            rmul!(Q, G)
+            # Store the rotation
+            layer = layer_thickness[i] += 1
+            givens[i, layer] = (G.c, G.s)
         end
     end
 
     H
 end
 
-function qr_algorithm!(H::SymTridiagonal{T}, start::Int, to::Int, Q = NotWanted(), tol = eps(T), maxiter = 100*size(H, 1)) where {T<:Real}
+function qr_algorithm!(H::SymTridiagonal{T}, Q, max_layers::Int = 128, tol = eps(T), maxiter::Int = 100*size(H, 1)) where {T<:Real}
+    # These used to be arguments of the func, todo, refactor
+    start = 1
+    to = size(H, 1)
+
     # iteration count
     iter = 0
 
     n = size(H, 1)
+    @assert iseven(n) # limitation for now..
 
-    @inbounds @fastmath while true
+    # pre-allocate some space to store given rotations in
+    givens = Matrix{Tuple{T,T}}(undef, n - 1, max_layers)
 
-        if iter > maxiter
-            return H, false, iter
-        end
+    # And keep track of how many rotations we have per column
+    layer_thickness = Vector{Int}(undef, n)
 
-        # Indexing
-        # `to` points to the column where the off-diagonal value was last zero.
-        # while `from` points to the smallest index such that there is no small off-diagonal
-        # value in columns from:end-1. Sometimes `from` is just 1. Cartoon of a split 
-        # with from != 1:
-        # 
-        #  + +            
-        #  + + o          
-        #    o X X        
-        #      X X X      
-        #      . X X X    
-        #      .   X X o 
-        #      .     o + +
-        #      .     . + +
-        #      ^     ^
-        #   from   to
-        # The X's form the unreduced tridiagonal matrix we are applying QR iterations to,
-        # the + values remain untouched! The o's are zeros -- or numerically considered zeros.
+    last_block_ends_at = to
 
-        # We keep `from` one column past the zero off-diagonal value, so we check whether
-        # the `from - 1` column has a small off-diagonal value.
-        from = to
-        while from > start && !is_offdiagonal_small(H, from - 1, tol)
-            from -= 1
-        end
+    # This outer loops ensures we only accumulate `max_layers` layers of rotations
+    @inbounds while true
 
-        if from == to
-            # This just means H[to, to-1] == 0, so one eigenvalue converged at the end
-            H.ev[from-1] = zero(T)
-            to -= 1
-        else
-            # Now we are sure we can work with a 2×2 block H[to-1:to,to-1:to]
-            # We check if this block has a conjugate eigenpair, which might mean we have
-            # converged w.r.t. this block if from + 1 == to. 
-            # Otherwise, if from + 1 < to, we do either a single or double shift, based on
-            # whether the H[to-1:to,to-1:to] part has real eigenvalues or a conjugate pair.
+        # Initialize the Given's rotations with identity rotations
+        fill!(givens, (one(T), zero(T)))
 
-            H₁₁ = H.dv[to-1]
-            H₂₂ = H.dv[to]
-            H₁₂ = H.ev[to-1]
+        # Set to true whenever at least one given's rotation is applied
+        did_a_thing = false
 
-            # Scaling to avoid losing precision in the case where we have nearly
-            # repeated eigenvalues.
-            scale = abs(H₁₁) + 2abs(H₁₂) + abs(H₂₂)
-            H₁₁ /= scale
-            H₁₂ /= scale
-            H₂₂ /= scale
+        # The current number of layers of rotations for the current block
+        fill!(layer_thickness, 0)
 
-            # Trace and discriminant of small eigenvalue problem.
-            t = (H₁₁ + H₂₂) / 2
-            d = (H₁₁ - t) * (H₂₂ - t) - H₁₂ * H₁₂
-            sqrt_discr = sqrt(abs(d))
+        # Do the QR iterations
+        while true
 
-            # Real eigenvalues.
-            # Note that if from + 1 == to in this case, then just one additional
-            # iteration is necessary, since the Wilkinson shift will do an exact shift.
+            if iter > maxiter
+                return H, false, iter
+            end
 
-            # Determine the Wilkinson shift -- the closest eigenvalue of the 2x2 block
-            # near H[to,to]
+            # Indexing
+            # `to` points to the column where the off-diagonal value was last zero.
+            # while `from` points to the smallest index such that there is no small off-diagonal
+            # value in columns from:end-1. Sometimes `from` is just 1. Cartoon of a split 
+            # with from != 1:
+            # 
+            #  + +            
+            #  + + o          
+            #    o X X        
+            #      X X X      
+            #      . X X X    
+            #      .   X X o 
+            #      .     o + +
+            #      .     . + +
+            #      ^     ^
+            #   from   to
+            # The X's form the unreduced tridiagonal matrix we are applying QR iterations to,
+            # the + values remain untouched! The o's are zeros -- or numerically considered zeros.
+
+            # We keep `from` one column past the zero off-diagonal value, so we check whether
+            # the `from - 1` column has a small off-diagonal value.
+            from = to
+            while from > start && !is_offdiagonal_small(H, from - 1, tol)
+                from -= 1
+            end
+
+            to ≤ start && break
+
+            if from == to
+                # This just means H[to, to-1] == 0, so one eigenvalue converged at the end
+                H.ev[from-1] = zero(T)
+                
+                # Store where the last block ends
+                if to == last_block_ends_at
+                    last_block_ends_at -= 1
+                end
+
+                # Move the current block's end point one step up
+                to -= 1
+            else
             
-            λ₁ = t + sqrt_discr
-            λ₂ = t - sqrt_discr
-            λ = abs(H₂₂ - λ₁) < abs(H₂₂ - λ₂) ? λ₁ : λ₂
-            λ *= scale
+                # Check if this block reached its capacity of given's rotations
+                thickness = maximum(view(layer_thickness, from:to))
 
-            # Run a bulge chase
-            single_shift!(H, from, to, λ, Q)
-            iter += 1
+                # If so, move the a previous block.
+                if thickness == max_layers
+                    to = from - 1
+                else
+
+                    # Now we are sure we can work with a 2×2 block H[to-1:to,to-1:to]
+                    # We check if this block has a conjugate eigenpair, which might mean we have
+                    # converged w.r.t. this block if from + 1 == to. 
+                    # Otherwise, if from + 1 < to, we do either a single or double shift, based on
+                    # whether the H[to-1:to,to-1:to] part has real eigenvalues or a conjugate pair.
+
+                    H₁₁ = H.dv[to-1]
+                    H₂₂ = H.dv[to]
+                    H₁₂ = H.ev[to-1]
+
+                    # Scaling to avoid losing precision in the case where we have nearly
+                    # repeated eigenvalues.
+                    scale = abs(H₁₁) + 2abs(H₁₂) + abs(H₂₂)
+                    H₁₁ /= scale
+                    H₁₂ /= scale
+                    H₂₂ /= scale
+
+                    # Trace and discriminant of small eigenvalue problem.
+                    t = (H₁₁ + H₂₂) / 2
+                    d = (H₁₁ - t) * (H₂₂ - t) - H₁₂ * H₁₂
+                    sqrt_discr = sqrt(abs(d))
+
+                    # Real eigenvalues.
+                    # Note that if from + 1 == to in this case, then just one additional
+                    # iteration is necessary, since the Wilkinson shift will do an exact shift.
+
+                    # Determine the Wilkinson shift -- the closest eigenvalue of the 2x2 block
+                    # near H[to,to]
+                    
+                    λ₁ = t + sqrt_discr
+                    λ₂ = t - sqrt_discr
+                    λ = abs(H₂₂ - λ₁) < abs(H₂₂ - λ₂) ? λ₁ : λ₂
+                    λ *= scale
+
+                    # Run a bulge chase
+                    did_a_thing = true
+                    single_shift!(H, from, to, λ, givens, layer_thickness)
+                    iter += 1
+                end
+            end
+
+            # Done
+            to ≤ start && break
         end
 
-        # Converged!
-        to ≤ start && break
+        # No new given's rotations, so converged.
+        !did_a_thing && break
+
+        # Apply the given's rotations in bulk
+        bulk_wave_order_2x2_rmul!(Q, givens)
+
+        to = last_block_ends_at
     end
 
     return H, true, iter
 end
-
-qr_algorithm!(H::SymTridiagonal{T}, Q = NotWanted(), tol = eps(real(T)), maxiter = 100*size(H, 1)) where {T} = qr_algorithm!(H, 1, size(H, 2), Q, tol, maxiter)
 
 function eigen_decomp!(H::SymTridiagonal{T}) where T
     n = size(H, 1)

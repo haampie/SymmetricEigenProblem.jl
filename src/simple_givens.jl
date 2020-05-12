@@ -27,6 +27,8 @@ Passed into the Schur factorization function if you do not wish to have the Schu
 """
 struct NotWanted end
 
+struct BulkStrategy end
+
 @inline lmul!(G::SmallRotation, A::AbstractMatrix) = lmul!(G, A, 1, size(A, 2))
 @inline rmul!(A::AbstractMatrix, G::SmallRotation) = rmul!(A, G, 1, size(A, 1))
 
