@@ -30,7 +30,14 @@ So indeed roughly `74.95%` of dgemm.
 
 ## Threading
 
-For threading use `JULIA_NUM_THREADS=16 julia`. It will parellellize the application of Given's rotations and gives significant speedups.
+For threading use `JULIA_NUM_THREADS=8 julia`. It will parellellize the application of Given's rotations and gives significant speedups.
+
+```julia
+julia> include("benchmark/benchmark.jl")
+
+julia> bench_parallel(2000, 2000, 64)
+267.1348970050438
+```
 
 ## Important note
 
@@ -43,7 +50,7 @@ Sometimes the algorithm might use exact eigenvalues as shifts, which might intro
 ## Example
 
 ```julia
-julia> using SymmetricEigenProblem
+julia> using LinearAlgebra, SymmetricEigenProblem
 
 julia> n = 2000;
 
@@ -51,9 +58,9 @@ julia> A = SymTridiagonal(collect(1.0 : n), rand(n - 1));
 
 julia> Q = Matrix(1.0I, n, n);
 
-julia> D = copy(A)
+julia> D = copy(A);
 
-julia> qr_algorithm!(D, Q);
+julia> SymmetricEigenProblem.qr_algorithm!(D, Q);
 
 julia> norm(A * Q - Q * Diagonal(D))
 2.8632552826583774e-10

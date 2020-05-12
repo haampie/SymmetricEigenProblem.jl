@@ -36,13 +36,13 @@ function bulk_wave_order_2x2_rmul_parallel!(A::AbstractMatrix, givens::Matrix{Tu
     p = Threads.nthreads()
 
     if p == 1
-        bulk_wave_order_2x2_rmul_parallel!(A, givens)
+        bulk_wave_order_2x2_rmul!(A, givens)
         return nothing
     end
 
     # divide into p roughly equal parts where part % 4 == 0
     m = size(A, 1)
-    part = 4 * (m ÷ p) ÷ 4
+    part = 4 * ((m ÷ p) ÷ 4)
 
     @sync begin
         for i = 1:p
