@@ -2,6 +2,8 @@
 
 A more or less working implementation of the QR-algorithm for real, symmetric, tridiagonal matrices.
 
+Turns out trivial bulge-chasing can be competitive with MRRR.
+
 ## Features
 - Fast computation of eigenvectors through applying Given's rotations in bulk without using GEMM. Assumes avx2 currently, but can be made generic. [1]
 - Otherwise standard bulge chasing with Wilkinson shifts, no multiple tightly packed bulges or anything.
