@@ -5,16 +5,19 @@ A more or less working implementation of the QR-algorithm for real, symmetric, t
 Turns out trivial bulge-chasing can be competitive with MRRR.
 
 ## Features
-- Fast computation of eigenvectors through applying Given's rotations in bulk without using GEMM. Assumes avx2 currently, but can be made generic. [1]
+- Fast computation of eigenvectors through applying Given's rotations in bulk without using GEMM. [1]
 - Otherwise standard bulge chasing with Wilkinson shifts, no multiple tightly packed bulges or anything.
 
-The Given's rotations can theoretically get 75% of dgemm performance (4 muls, 2 adds). To benchmark this non-blas-type routine, try:
+The Given's rotations can theoretically get 75% of gemm performance (4 muls, 2 adds). To benchmark this non-blas-type routine, try:
 
 ```julia
 julia> include("benchmark/benchmark.jl")
 
-julia> bench(2000, 2000, 64)
-45.180626626219976
+julia> bench(Float64, 2000, 2000, 64)
+45.722959723206735
+
+julia> bench(Float32, 2000, 2000, 64)
+89.314389055655
 ```
 
 which will apply `64 × 1999` Given's rotations to the columns of a `2000 × 2000` matrix and output the GFLOP/s. On my computer single-threaded peakflops is:
@@ -37,13 +40,18 @@ For threading use `JULIA_NUM_THREADS=8 julia`. It will parellellize the applicat
 ```julia
 julia> include("benchmark/benchmark.jl")
 
-julia> bench_parallel(2000, 2000, 64)
+julia> bench_parallel(Float64, 2000, 2000, 64)
 267.1348970050438
+
+julia> bench_parallel(Float32, 2000, 2000, 64)
+530.8279734148967
 ```
 
-## Important note
+## Caveats
 
-Because this is a prototype, it only supports Float64 SymTridiagonal matrices which have an **order divisable by 4**. It's trivial to support many more types of matrices, but that's for later. If your matrix does not have this order, julia might segfault :).
+Currently only supports matrices of order divisable by 2. 
+
+This restriction can be lifted when the fused Given's rotation kernels are generated (4 rotations are combined, so ≤ 16 different kernels, I've implemented 3 by hand in `src/bulk_givens.jl`).
 
 ## Stability issues
 

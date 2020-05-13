@@ -1,4 +1,5 @@
 using Base.Threads: nthreads, @spawn, @sync
+using VectorizationBase: pick_vector_width
 
 struct Fused2x2{T}
     c1::T
@@ -32,7 +33,7 @@ struct Fused2x2_remainder2{T}
     i::Int
 end
 
-function bulk_wave_order_2x2_rmul_parallel!(A::AbstractMatrix, givens::Matrix{Tuple{T,T}}) where {T}
+function bulk_wave_order_2x2_rmul_parallel!(A::AbstractMatrix{T}, givens::Matrix{Tuple{T,T}}) where {T}
     p = Threads.nthreads()
 
     if p == 1
@@ -40,9 +41,10 @@ function bulk_wave_order_2x2_rmul_parallel!(A::AbstractMatrix, givens::Matrix{Tu
         return nothing
     end
 
-    # divide into p roughly equal parts where part % 4 == 0
+    # divide into p roughly equal parts where everything fits in registers part % W == 0
     m = size(A, 1)
-    part = 4 * ((m ÷ p) ÷ 4)
+    W = pick_vector_width(T)
+    part = W * ((m ÷ p) ÷ W)
 
     @sync begin
         for i = 1:p
@@ -127,6 +129,7 @@ function bulk_wave_order_2x2_rmul!(A::AbstractMatrix, givens::Matrix{Tuple{T,T}}
                 layer = i - 1 - max_m
 
                 c1, s1 = givens[start_col + 1, layer + 0]
+                #c3, s3 = cut off
                 c3, s3 = givens[start_col + 0, layer + 1]
                 c4, s4 = givens[start_col + 1, layer + 1]
 

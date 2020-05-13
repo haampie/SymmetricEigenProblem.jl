@@ -1,11 +1,11 @@
 using SymmetricEigenProblem
 using BenchmarkTools
 
-function bench(m = 2000, n = 2000, k = 64)
+function bench(T = Float64, m = 2000, n = 2000, k = 64)
 
-    givens = fill((rand(), rand()), n - 1, k)
+    givens = fill((rand(T), rand(T)), n - 1, k)
 
-    Q = rand(m, n)
+    Q = rand(T, m, n)
 
     # 6 flops per givens rotation per row
     flops = 6 * k * (n - 1) * m
@@ -15,11 +15,11 @@ function bench(m = 2000, n = 2000, k = 64)
     return flops / time / 1e9
 end
 
-function bench_parallel(m = 2000, n = 2000, k = 64)
+function bench_parallel(T = Float64, m = 2000, n = 2000, k = 64)
 
-    givens = fill((rand(), rand()), n - 1, k)
+    givens = fill((rand(T), rand(T)), n - 1, k)
 
-    Q = rand(m, n)
+    Q = rand(T, m, n)
 
     # 6 flops per givens rotation per row
     flops = 6 * k * (n - 1) * m
